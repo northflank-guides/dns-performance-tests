@@ -1,0 +1,62 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dns-records-config
+  namespace: coredns-test
+data:
+  records.txt: |-
+    <REPLACE WITH RESULTS FROM THE KUBERNETES SCRIPT>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dnsperf-deployment
+  namespace: coredns-test
+  labels:
+    app: dnsperf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dnsperf
+  template:
+    metadata:
+      labels:
+        app: dnsperf
+    spec:
+      nodeSelector:
+        coredns-test: dnsperf
+      containers:
+      - env:
+        - name: MAX_TEST_SECONDS
+          value: "600"
+        - name: MAX_QPS
+          value: "1000000"
+        # please replace the ipaddr with the following command result output
+        # $ kubectl get -n kube-system svc kube-dns -o go-template='{{.spec.clusterIP}}{{"\n"}}'
+        - name: DNS_SERVER_ADDR
+          value: "<TARGET DNS SERVER>"
+        name: dnsperf
+        image: guessi/dnsperf:alpine
+        imagePullPolicy: Always
+        volumeMounts:
+        - name: dns-records-volume
+          mountPath: /opt/
+          readOnly: true
+        resources:
+          limits:
+            memory: 512Mi
+            cpu: 1
+          requests:
+            cpu: 1
+            memory: 512Mi
+      volumes:
+        - name: dns-records-volume
+          configMap:
+            name: dns-records-config
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 25%
